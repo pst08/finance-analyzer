@@ -1,0 +1,38 @@
+/* Import Cal Sans font */
+@import url('https://fonts.googleapis.com/css2?family=Cal+Sans&display=swap');
+
+/* Apply font globally */
+html, body {
+  font-family: 'Cal Sans', sans-serif;
+  margin: 0; /* To remove any default margin */
+  padding: 0; /* To remove any default padding */
+  height: 100%;
+  width: 100%;
+}
+
+#root, .app, .content {
+  height: 100%;
+  width: 100%;
+}
+
+.app {
+  display: flex;
+  position: relative;
+}
+
+/* Scrollbar styles */
+::-webkit-scrollbar {
+  width: 10px;
+}
+
+::-webkit-scrollbar-track {
+  background: #09541b;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #bfe7c9;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #DAF7A6;
+}
