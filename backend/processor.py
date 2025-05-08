@@ -10,6 +10,9 @@ import logging
 import warnings
 import traceback
 import json
+from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score, confusion_matrix
+from sklearn.metrics import silhouette_score, precision_recall_curve, auc, roc_auc_score
+from sklearn.model_selection import train_test_split
 
 # Set up logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -612,4 +615,277 @@ def forecast_spending():
     return {
         'status': 'info',
         'message': 'Forecasting module not yet implemented. Placeholder response.'
+    }
+
+# Add these functions to your processor.py file
+
+
+
+def calculate_categorization_metrics(data, true_labels, predicted_labels):
+    """
+    Calculate metrics for transaction categorization performance
+    
+    Parameters:
+    -----------
+    data : DataFrame
+        The financial dataset
+    true_labels : array-like
+        The true category labels
+    predicted_labels : array-like
+        The predicted category labels
+        
+    Returns:
+    --------
+    dict
+        Dictionary containing categorization performance metrics
+    """
+    categories = np.unique(true_labels)
+    
+    # Calculate main metrics
+    accuracy = accuracy_score(true_labels, predicted_labels)
+    precision = precision_score(true_labels, predicted_labels, average='weighted')
+    recall = recall_score(true_labels, predicted_labels, average='weighted')
+    f1 = f1_score(true_labels, predicted_labels, average='weighted')
+    
+    # Calculate confusion matrix
+    conf_matrix = confusion_matrix(true_labels, predicted_labels)
+    
+    # Format confusion matrix for frontend visualization
+    confusion_matrix_data = []
+    for i, category in enumerate(categories):
+        correct = conf_matrix[i, i]
+        incorrect = sum(conf_matrix[i, :]) - correct
+        confusion_matrix_data.append({
+            "category": category,
+            "correctPredictions": int(correct),
+            "incorrectPredictions": int(incorrect)
+        })
+    
+    return {
+        "accuracy": float(accuracy),
+        "precision": float(precision),
+        "recall": float(recall),
+        "f1Score": float(f1),
+        "confusionMatrix": confusion_matrix_data
+    }
+
+def calculate_clustering_metrics(data):
+    """
+    Calculate metrics for clustering quality
+    
+    Parameters:
+    -----------
+    data : DataFrame
+        The financial dataset with features to cluster
+        
+    Returns:
+    --------
+    dict
+        Dictionary containing clustering quality metrics
+    """
+    # Select relevant features for clustering
+    # Adjust these columns based on your actual dataset
+    features = data[['Income', 'Age', 'Groceries', 'Transport', 
+                     'Eating_Out', 'Entertainment', 'Utilities']]
+    
+    # Scale features
+    from sklearn.preprocessing import StandardScaler
+    scaler = StandardScaler()
+    scaled_features = scaler.fit_transform(features)
+    
+    # Find optimal number of clusters using the elbow method
+    distortions = []
+    K = range(1, 10)
+    for k in K:
+        kmeans = KMeans(n_clusters=k, random_state=42)
+        kmeans.fit(scaled_features)
+        distortions.append(kmeans.inertia_)
+    
+    # Identify elbow point (this is a simplified approach)
+    optimal_clusters = 4  # This would normally be calculated from the distortions
+    
+    # Perform clustering with optimal number of clusters
+    kmeans = KMeans(n_clusters=optimal_clusters, random_state=42)
+    clusters = kmeans.fit_predict(scaled_features)
+    
+    # Calculate silhouette score
+    silhouette = silhouette_score(scaled_features, clusters) if optimal_clusters > 1 else 0
+    
+    # Calculate Dunn Index (simplified)
+    # In a real implementation, you'd compute inter-cluster and intra-cluster distances
+    dunn_index = 0.54  # Placeholder value
+    
+    # Get cluster distribution
+    cluster_counts = np.bincount(clusters)
+    cluster_distribution = [
+        {"name": f"Cluster {i+1}", "value": int(count)}
+        for i, count in enumerate(cluster_counts)
+    ]
+    
+    return {
+        "silhouetteScore": float(silhouette),
+        "dunnIndex": float(dunn_index),
+        "optimalClusters": int(optimal_clusters),
+        "clusterDistribution": cluster_distribution
+    }
+
+def calculate_anomaly_detection_metrics(data, true_anomalies=None):
+    """
+    Calculate metrics for anomaly detection performance
+    
+    Parameters:
+    -----------
+    data : DataFrame
+        The financial dataset
+    true_anomalies : array-like, optional
+        True anomaly labels (1 for anomaly, 0 for normal)
+        If None, will use synthetic data for demonstration
+        
+    Returns:
+    --------
+    dict
+        Dictionary containing anomaly detection metrics
+    """
+    # If no true anomalies provided, create synthetic data for demonstration
+    if true_anomalies is None:
+        # Simulate anomaly detection results with 5% anomaly rate
+        np.random.seed(42)
+        n_samples = len(data)
+        true_anomalies = np.zeros(n_samples)
+        anomaly_indices = np.random.choice(range(n_samples), size=int(n_samples * 0.05), replace=False)
+        true_anomalies[anomaly_indices] = 1
+        
+        # Simulate anomaly scores (higher = more likely to be anomaly)
+        anomaly_scores = np.random.beta(1, 10, size=n_samples)  # Most scores will be low
+        anomaly_scores[anomaly_indices] += np.random.beta(5, 1, size=len(anomaly_indices))  # Boost anomaly scores
+        anomaly_scores = np.clip(anomaly_scores, 0, 1)  # Ensure scores are between 0 and 1
+    else:
+        # In real implementation, you'd calculate anomaly scores from your model
+        anomaly_scores = np.random.rand(len(true_anomalies))
+    
+    # Calculate threshold-independent metrics
+    precision, recall, _ = precision_recall_curve(true_anomalies, anomaly_scores)
+    pr_auc = auc(recall, precision)
+    
+    # For ROC-AUC
+    roc_auc = roc_auc_score(true_anomalies, anomaly_scores)
+    
+    # Calculate threshold-dependent metrics using an optimal threshold
+    # In practice, you would determine this threshold based on your specific requirements
+    threshold = 0.5
+    predicted_anomalies = (anomaly_scores >= threshold).astype(int)
+    
+    # Calculate accuracy and false positive rate
+    accuracy = accuracy_score(true_anomalies, predicted_anomalies)
+    fps = sum((predicted_anomalies == 1) & (true_anomalies == 0))
+    n_normal = sum(true_anomalies == 0)
+    fpr = fps / n_normal if n_normal > 0 else 0
+    
+    # Calculate anomaly rate
+    anomaly_rate = sum(true_anomalies) / len(true_anomalies)
+    
+    return {
+        "precisionRecallAUC": float(pr_auc),
+        "rocAUC": float(roc_auc),
+        "anomalyRate": float(anomaly_rate),
+        "accuracy": float(accuracy),
+        "falsePositiveRate": float(fpr)
+    }
+
+def calculate_recommendation_metrics(data):
+    """
+    Calculate metrics for recommendation quality
+    
+    Parameters:
+    -----------
+    data : DataFrame
+        The financial dataset
+        
+    Returns:
+    --------
+    dict
+        Dictionary containing recommendation quality metrics
+    """
+    # For association rule metrics (support, confidence, lift)
+    # In a real implementation, you'd calculate these from your Apriori algorithm results
+    support = 0.42
+    confidence = 0.76
+    lift = 2.1
+    
+    # For budget prediction accuracy
+    # Simulate MAE and RMSE calculation for savings predictions
+    # In a real implementation, you'd use actual and predicted values
+    
+    # Split data for demonstration purposes
+    X = data[['Income', 'Age', 'Dependents', 'Groceries', 'Transport', 'Entertainment']]
+    y = data['Desired_Savings']
+    
+    X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
+    
+    # Train a simple model for demonstration
+    from sklearn.linear_model import LinearRegression
+    model = LinearRegression()
+    model.fit(X_train, y_train)
+    
+    # Make predictions
+    y_pred = model.predict(X_test)
+    
+    # Calculate MAE and RMSE
+    from sklearn.metrics import mean_absolute_error, mean_squared_error
+    mae = mean_absolute_error(y_test, y_pred)
+    rmse = np.sqrt(mean_squared_error(y_test, y_pred))
+    
+    # Simulate user satisfaction score (in a real app, this would come from user surveys)
+    user_satisfaction = 4.2
+    
+    return {
+        "support": float(support),
+        "confidence": float(confidence),
+        "lift": float(lift),
+        "mae": float(mae),
+        "rmse": float(rmse),
+        "userSatisfaction": float(user_satisfaction)
+    }
+
+def calculate_all_metrics(data):
+    """
+    Calculate all evaluation metrics for the personal finance analyzer
+    
+    Parameters:
+    -----------
+    data : DataFrame
+        The financial dataset
+        
+    Returns:
+    --------
+    dict
+        Dictionary containing all evaluation metrics
+    """
+    # In a real application, you would have actual labels and predictions
+    # Here we'll simulate them for demonstration purposes
+    
+    # Simulate transaction categorization
+    # For example, predicting expense categories based on amount and other features
+    np.random.seed(42)
+    categories = ['Groceries', 'Transport', 'Entertainment', 'Utilities', 'Healthcare']
+    true_labels = np.random.choice(categories, size=len(data))
+    predicted_labels = np.copy(true_labels)
+    
+    # Introduce some errors (15% error rate)
+    error_indices = np.random.choice(range(len(data)), size=int(len(data) * 0.15), replace=False)
+    for idx in error_indices:
+        options = [cat for cat in categories if cat != true_labels[idx]]
+        predicted_labels[idx] = np.random.choice(options)
+    
+    # Calculate all metrics
+    categorization_metrics = calculate_categorization_metrics(data, true_labels, predicted_labels)
+    clustering_metrics = calculate_clustering_metrics(data)
+    anomaly_metrics = calculate_anomaly_detection_metrics(data)
+    recommendation_metrics = calculate_recommendation_metrics(data)
+    
+    return {
+        "categorization": categorization_metrics,
+        "clustering": clustering_metrics,
+        "anomalyDetection": anomaly_metrics,
+        "recommendations": recommendation_metrics
     }

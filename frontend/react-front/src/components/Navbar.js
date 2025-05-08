@@ -121,7 +121,7 @@ function Navbar() {
         color: "rgba(216, 243, 220, 0.7)",
         borderTop: `1px solid ${colors.mediumGreen}`
       }}>
-        Data Mining Project © 2023
+        Data Mining Project © 2025
       </div>
     </div>
   );

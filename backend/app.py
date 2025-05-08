@@ -346,6 +346,68 @@ def home():
         "</ul>"
     )
 
+# Add this to your app.py file or create a new route
+
+@app.route('/api/evaluation-metrics', methods=['GET'])
+def get_evaluation_metrics():
+    """
+    Endpoint to retrieve model evaluation metrics
+    """
+    try:
+        # Import your processor if needed
+        # from processor import calculate_metrics
+        
+        # In a real implementation, you would calculate these metrics dynamically
+        # metrics = calculate_metrics(your_data)
+        
+        # For now, we'll return sample data that matches the frontend expectations
+        metrics = {
+            "categorization": {
+                "accuracy": 0.87,
+                "precision": 0.84,
+                "recall": 0.81,
+                "f1Score": 0.83,
+                "confusionMatrix": [
+                    {"category": "Groceries", "correctPredictions": 93, "incorrectPredictions": 7},
+                    {"category": "Transport", "correctPredictions": 89, "incorrectPredictions": 11},
+                    {"category": "Entertainment", "correctPredictions": 82, "incorrectPredictions": 18},
+                    {"category": "Utilities", "correctPredictions": 91, "incorrectPredictions": 9},
+                    {"category": "Healthcare", "correctPredictions": 85, "incorrectPredictions": 15}
+                ]
+            },
+            "clustering": {
+                "silhouetteScore": 0.68,
+                "dunnIndex": 0.54,
+                "optimalClusters": 4,
+                "clusterDistribution": [
+                    {"name": "Cluster 1", "value": 35},
+                    {"name": "Cluster 2", "value": 28},
+                    {"name": "Cluster 3", "value": 22},
+                    {"name": "Cluster 4", "value": 15}
+                ]
+            },
+            "anomalyDetection": {
+                "precisionRecallAUC": 0.92,
+                "rocAUC": 0.94,
+                "anomalyRate": 0.05,
+                "accuracy": 0.97,
+                "falsePositiveRate": 0.03
+            },
+            "recommendations": {
+                "support": 0.42,
+                "confidence": 0.76,
+                "lift": 2.1,
+                "mae": 156.43,
+                "rmse": 212.88,
+                "userSatisfaction": 4.2
+            }
+        }
+        
+        return jsonify(metrics), 200
+    except Exception as e:
+        app.logger.error(f"Error retrieving evaluation metrics: {str(e)}")
+        return jsonify({"error": "Failed to retrieve evaluation metrics"}), 500
+
 
 if __name__ == '__main__':
     # Make sure upload directory exists
