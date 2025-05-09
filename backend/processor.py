@@ -13,15 +13,15 @@ import json
 from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score, confusion_matrix
 from sklearn.metrics import silhouette_score, precision_recall_curve, auc, roc_auc_score
 from sklearn.model_selection import train_test_split
+from sklearn.preprocessing import OneHotEncoder
 
-# Set up logging
+
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
-# Ignore warnings for cleaner output
 warnings.filterwarnings('ignore')
+ #NaN value handler 
 
-# Add a custom JSON encoder to handle NaN values
 class NpEncoder(json.JSONEncoder):
     def default(self, obj):
         if isinstance(obj, np.integer):
@@ -36,7 +36,6 @@ class NpEncoder(json.JSONEncoder):
             return None
         return super(NpEncoder, self).default(obj)
 
-# Function to recursively replace NaN with None
 def replace_nan_with_none(obj):
     if isinstance(obj, dict):
         return {k: replace_nan_with_none(v) for k, v in obj.items()}
@@ -54,37 +53,31 @@ def replace_nan_with_none(obj):
 def clean_data(df):
     """
     Function to clean data by handling missing values.
-    Numeric columns are filled with the mean, categorical columns are filled with mode.
+    Numeric columns are filled with the median, categorical columns are filled with mode.
     """
     try:
         logger.info(f"Cleaning data with {len(df)} rows")
         
-        # Make a copy to avoid modifying the original
         df = df.copy()
-        
-        # Check if dataframe is empty
+
         if len(df) == 0:
             logger.warning("Empty dataframe provided to clean_data")
             return df
-            
-        # Convert all columns to appropriate types
-        # Attempt to convert string numbers to float/int
+
         for col in df.columns:
             if df[col].dtype == 'object':
                 try:
                     df[col] = pd.to_numeric(df[col], errors='coerce')
                 except:
-                    pass  # Keep as object if conversion fails
-        
-        # Handle missing numeric columns
+                    pass
+
         numeric_columns = df.select_dtypes(include=['float64', 'int64']).columns
         for col in numeric_columns:
             if df[col].isna().sum() > 0:
                 median_value = df[col].median()
-                df[col].fillna(median_value, inplace=True)  # Use median instead of mean for robustness
+                df[col].fillna(median_value, inplace=True)
                 logger.info(f"Filled {df[col].isna().sum()} NaN values in column {col} with median {median_value}")
 
-        # Handle missing categorical columns
         categorical_columns = df.select_dtypes(include=['object']).columns
         for col in categorical_columns:
             if df[col].isna().sum() > 0:
@@ -92,33 +85,37 @@ def clean_data(df):
                 df[col].fillna(mode_value, inplace=True)
                 logger.info(f"Filled {df[col].isna().sum()} NaN values in column {col} with mode {mode_value}")
 
-        # Log NaN counts for each column to help diagnose issues
         nan_counts = df.isna().sum()
         columns_with_nans = nan_counts[nan_counts > 0]
         if not columns_with_nans.empty:
             logger.warning(f"Columns with remaining NaNs: {columns_with_nans.to_dict()}")
-        
-        # MODIFIED: Only drop rows if we still have NaNs after filling
-        # First check if there are any NaNs left
+
         if df.isna().any().any():
             rows_before = len(df)
-            # Only drop rows with a high percentage of NaN values (more than 50%)
-            # This ensures we don't lose all data due to a few missing values
             threshold = len(df.columns) * 0.5
             df = df.dropna(thresh=threshold)
             rows_after = len(df)
             if rows_before > rows_after:
                 logger.warning(f"Dropped {rows_before - rows_after} rows with more than 50% NaN values")
-                # If we've dropped more than 90% of our data, something is wrong
                 if rows_after < rows_before * 0.1:
-                    logger.error(f"WARNING: Dropped more than 90% of data rows. Check data quality and delimiter settings!")
-        
+                    logger.error("WARNING: Dropped more than 90% of data rows. Check data quality and delimiter settings!")
+
+        from sklearn.preprocessing import LabelEncoder
+        le = LabelEncoder()
+
+        if 'Occupation' in df.columns and df['Occupation'].dtype == 'object':
+            df['Occupation'] = le.fit_transform(df['Occupation'])
+            logger.info("Encoded Occupation column with LabelEncoder")
+
+        if 'City_Tier' in df.columns and df['City_Tier'].dtype == 'object':
+            df['City_Tier'] = le.fit_transform(df['City_Tier'])
+            logger.info("Encoded City_Tier column with LabelEncoder")
+
         return df
     except Exception as e:
         logger.error(f"Error in clean_data: {str(e)}")
         logger.error(traceback.format_exc())
         raise
-
 
 def compute_basic_insights(df):
     """
@@ -128,26 +125,21 @@ def compute_basic_insights(df):
         logger.info("Computing basic insights")
         insights = {}
         
-        # Check relevant columns exist
         required_cols = ['Income', 'Groceries', 'Entertainment', 'Eating_Out']
         for col in required_cols:
             if col not in df.columns:
                 return {'error': f"Required column '{col}' not found in dataset"}
         
-        # Get numeric columns
         numeric_cols = df.select_dtypes(include=np.number).columns.tolist()
         
-        # Basic statistics
         insights['total_records'] = len(df)
         
-        # Descriptive statistics for Income
         if 'Income' in df.columns:
             insights['avg_income'] = float(df['Income'].mean())
             insights['median_income'] = float(df['Income'].median())
             insights['min_income'] = float(df['Income'].min())
             insights['max_income'] = float(df['Income'].max())
             
-            # Calculate total income and spending
             total_income = float(df['Income'].sum())
             spending_cols = [col for col in numeric_cols if col not in ['Income', 'Desired_Savings', 'Disposable_Income']]
             total_spent = float(df[spending_cols].sum().sum())
@@ -158,7 +150,6 @@ def compute_basic_insights(df):
                 'potential_savings': total_income - total_spent,
             })
         
-        # Most and least spent categories
         expense_cols = [col for col in numeric_cols if col not in ['Income', 'Age', 'Dependents', 'Desired_Savings_Percentage', 'Desired_Savings', 'Disposable_Income']]
         
         if expense_cols:
@@ -167,13 +158,11 @@ def compute_basic_insights(df):
             insights['most_spent_category'] = expense_totals.index[0]
             insights['least_spent_category'] = expense_totals.index[-1]
         
-        # Average spending by age group if Age column exists
         if 'Age' in df.columns:
             df['Age_Group'] = pd.cut(df['Age'], bins=[0, 25, 35, 45, 55, 100], labels=['18-25', '26-35', '36-45', '46-55', '56+'])
             age_spending = df.groupby('Age_Group')['Income'].mean().to_dict()
             insights['avg_income_by_age'] = {str(k): float(v) for k, v in age_spending.items()}
         
-        # Replace NaN with None
         insights = replace_nan_with_none(insights)
         return insights
     except Exception as e:
@@ -189,31 +178,38 @@ def cluster_users(df, n_clusters=3):
     try:
         logger.info(f"Clustering {len(df)} users with KMeans (k={n_clusters})")
         
-        # Select relevant features for clustering
         features = ['Income', 'Rent', 'Groceries', 'Entertainment', 'Eating_Out', 'Healthcare']
         
-        # Check if all features exist
         missing_features = [col for col in features if col not in df.columns]
         if missing_features:
             logger.warning(f"Missing clustering features: {missing_features}")
-            # Use available features
             features = [col for col in features if col in df.columns]
-            
+        
         if not features:
             return df, {"error": "No valid features for clustering"}
         
-        # Get the data for clustering
         X = df[features].copy()
+
+        categorical_cols = []
+        if 'Occupation' in df.columns:
+            categorical_cols.append('Occupation')
+        if 'City_Tier' in df.columns:
+            categorical_cols.append('City_Tier')
+
+        if categorical_cols:
+            encoder = OneHotEncoder(sparse_output=False, handle_unknown='ignore')
+            encoded = encoder.fit_transform(df[categorical_cols])
+            encoded_df = pd.DataFrame(encoded, columns=encoder.get_feature_names_out(categorical_cols), index=df.index)
+            X = pd.concat([X, encoded_df], axis=1)
         
-        # Handle any remaining NaNs
+
         X.fillna(X.median(), inplace=True)
         
-        # Normalize data
+        # Normalize
         scaler = MinMaxScaler()
         X_scaled = scaler.fit_transform(X)
-        
-        # For large datasets, use sample to speed up clustering
-        sample_size = min(10000, len(df))  # Max 10k samples
+
+        sample_size = min(10000, len(df))
         if len(df) > sample_size:
             logger.info(f"Using {sample_size} samples for clustering")
             indices = np.random.choice(len(df), sample_size, replace=False)
@@ -222,22 +218,31 @@ def cluster_users(df, n_clusters=3):
         else:
             kmeans = KMeans(n_clusters=n_clusters, random_state=42, n_init=10)
             kmeans.fit(X_scaled)
-        
-        # Predict clusters for all data
+
         df['Spending_Cluster'] = kmeans.predict(X_scaled)
-        
-        # Get stats about each cluster
+
         cluster_stats = {}
         for cluster in range(n_clusters):
             cluster_df = df[df['Spending_Cluster'] == cluster]
-            cluster_stats[f'Cluster_{cluster}'] = {
+            stats = {
                 'count': int(len(cluster_df)),
-                'pct': float(len(cluster_df) / len(df) * 100),
+                'pct': float(len(cluster_df) / len(df)),  # Return as decimal, not percentage
                 'avg_income': float(cluster_df['Income'].mean()) if 'Income' in df.columns else 0,
                 'avg_spending': float(cluster_df[features[1:]].sum(axis=1).mean()) if len(features) > 1 else 0
             }
-        
-        # Replace NaN with None
+            
+            if 'Occupation' in df.columns and not cluster_df['Occupation'].dropna().empty:
+                stats['most_common_occupation'] = cluster_df['Occupation'].value_counts().idxmax()
+            else:
+                stats['most_common_occupation'] = None
+
+            if 'City_Tier' in df.columns and not cluster_df['City_Tier'].dropna().empty:
+                stats['most_common_city_tier'] = cluster_df['City_Tier'].value_counts().idxmax()
+            else:
+                stats['most_common_city_tier'] = None
+
+            cluster_stats[f'Cluster_{cluster}'] = stats
+
         cluster_stats = replace_nan_with_none(cluster_stats)
         return df, cluster_stats
     except Exception as e:
@@ -253,29 +258,32 @@ def detect_anomalies(df, contamination=0.02):
     try:
         logger.info(f"Detecting anomalies with contamination rate {contamination}")
         
-        # Select relevant features for anomaly detection
-        features = ['Groceries', 'Eating_Out', 'Entertainment', 'Miscellaneous']
+        features = ['Groceries', 'Eating_Out', 'Entertainment', 'Miscellaneous', 'Occupation', 'City_Tier']
         
-        # Check if all required features exist
         missing_features = [col for col in features if col not in df.columns]
         if missing_features:
             logger.warning(f"Missing anomaly detection features: {missing_features}")
-            # Use available features
+            
             features = [col for col in features if col in df.columns]
             
         if not features:
             return df, {"error": "No valid features for anomaly detection"}
-            
-        # Get data for anomaly detection
-        X = df[features].copy()
         
-        # Handle any remaining NaNs
+        # Encode categorical features (occupation and city_tier)
+        df_encoded = df.copy()
+        
+        if 'Occupation' in df_encoded.columns:
+            df_encoded['Occupation'] = df_encoded['Occupation'].map({'Self_Employed': 0, 'Retired': 1, 'Student': 2, 'Professional': 3})
+        
+        if 'City_Tier' in df_encoded.columns:
+            df_encoded['City_Tier'] = df_encoded['City_Tier'].map({'Tier_1': 0, 'Tier_2': 1, 'Tier_3': 2})
+        
+        X = df_encoded[features].copy()
+        
         X.fillna(X.median(), inplace=True)
         
-        # For large datasets, use sample to fit the model
-        sample_size = min(10000, len(df))  # Max 10k samples
+        sample_size = min(10000, len(df)) 
         
-        # Adjust contamination for sample size
         adjusted_contamination = contamination
         if len(df) > sample_size:
             # Scale contamination to sample size
@@ -332,17 +340,14 @@ def generate_recommendations(df):
         logger.info("Generating recommendations")
         recommendations = {}
         
-        # Check if required columns exist
         required_cols = ['Income', 'Desired_Savings']
         missing_cols = [col for col in required_cols if col not in df.columns]
         if missing_cols:
             return {"error": f"Missing columns for recommendations: {missing_cols}"}
         
-        # Savings regression prediction
         try:
-            reg_features = ['Income', 'Rent', 'Loan_Repayment', 'Utilities']
+            reg_features = ['Income', 'Rent', 'Loan_Repayment', 'Utilities', 'Occupation', 'City_Tier']
             
-            # Use available features
             available_features = [col for col in reg_features if col in df.columns]
             if len(available_features) > 0:
                 X = df[available_features].fillna(0)
@@ -376,7 +381,7 @@ def generate_recommendations(df):
                 rule_df = df.sample(sample_size, random_state=42)
             else:
                 rule_df = df
-                
+               
             # Create binary features
             savings_mean = rule_df['Desired_Savings_Percentage'].mean() if 'Desired_Savings_Percentage' in rule_df.columns else 0
             rule_df['High_Saver'] = (rule_df.get('Desired_Savings_Percentage', 0) > savings_mean).astype(int)
@@ -616,10 +621,6 @@ def forecast_spending():
         'status': 'info',
         'message': 'Forecasting module not yet implemented. Placeholder response.'
     }
-
-# Add these functions to your processor.py file
-
-
 
 def calculate_categorization_metrics(data, true_labels, predicted_labels):
     """

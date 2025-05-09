@@ -102,16 +102,6 @@ function Navbar() {
           Forecasting
         </NavLink>
         
-        <NavLink 
-          to="/display-table" 
-          style={({ isActive }) => ({
-            ...navLinkStyle,
-            ...(isActive ? activeStyle : {})
-          })}
-        >
-          <FaTable style={iconStyle} />
-          Display Table
-        </NavLink>
       </nav>
       
       <div style={{ 
